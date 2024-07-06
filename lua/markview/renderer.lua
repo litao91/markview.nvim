@@ -1,17 +1,18 @@
 local renderer = {};
-local devicons = require("nvim-web-devicons");
+local  devicons_ok, devicons = pcall(require, "nvim-web-devicons");
+local  mini_icons_ok, mini_icons = pcall(require,"mini.icons");
 
 
 local get_str_width = function (str)
 	local width = 0;
-	local overlflow = 0;
+	local overflow = 0;
 
 	for match in str:gmatch("[%z\1-\127\194-\244][\128-\191]*") do
-		overlflow = overlflow + (vim.fn.strdisplaywidth(match) - 1);
+		overflow = overflow + (vim.fn.strdisplaywidth(match) - 1);
 		width = width + #match
 	end
 
-	return width, overlflow
+	return width, overflow
 end
 
 
@@ -246,12 +247,12 @@ local table_header = function (buffer, content, config_table)
 	end
 end
 
---- Renderer for table seperator
+--- Renderer for table separator
 ---@param buffer number
 ---@param content any
 ---@param user_config markview.config
 ---@param r_num number
-local table_seperator = function (buffer, content, user_config, r_num)
+local table_separator = function (buffer, content, user_config, r_num)
 	local tbl_conf = user_config.tables;
 
 	local curr_col = 0;
@@ -581,7 +582,7 @@ renderer.render_headers = function (buffer, content, config)
 			hl_mode = "combine"
 		});
 	elseif conf.style == "label" then
-		-- Adds icons, seperators, paddings etc
+		-- Adds icons, separators, paddings etc
 		vim.api.nvim_buf_set_extmark(buffer, renderer.namespace, content.row_start, 0, {
 			virt_text_pos = conf.position or "overlay",
 			virt_text = {
@@ -700,7 +701,13 @@ renderer.render_code_blocks = function (buffer, content, config_table)
 		end
 	elseif config_table.style == "language" then
 		local language = content.language;
-		local icon, hl = devicons.get_icon(nil, language, { default = true });
+		local icon = nil
+    local hl = nil
+    if mini_icons_ok and mini_icons ~= nil then
+      icon, hk = mini_icons.get("filetype", language)
+    elseif devicons ~= nil then
+      icon, hk = devicons.get_icon(nil, language, { default = true })
+    end
 		local block_length = content.largest_line;
 
 		if config_table.language_names ~= nil then
@@ -1118,8 +1125,8 @@ renderer.render_tables = function (buffer, content, user_config)
 	for row_number, _ in ipairs(content.rows) do
 		if content.row_type[row_number] == "header" then
 			table_header(buffer, content, user_config);
-		elseif content.row_type[row_number] == "seperator" then
-			table_seperator(buffer, content, user_config, row_number)
+		elseif content.row_type[row_number] == "separator" then
+			table_separator(buffer, content, user_config, row_number)
 		elseif content.row_type[row_number] == "content" and row_number == #content.rows then
 			table_footer(buffer, content, user_config)
 		else
@@ -1129,7 +1136,35 @@ renderer.render_tables = function (buffer, content, user_config)
 end
 
 
+renderer.render_typst_headers = function(buffer, content, config)
+	if config.enable == false then
+		return;
+	end
 
+	---@type markview.render_config.headings.h
+	local conf = config["heading_" .. content.level] or {};
+	local shift = config.shift_width or vim.bo[buffer].shiftwidth;
+		vim.api.nvim_buf_set_extmark(buffer, renderer.namespace, content.row_start, 0, {
+			virt_text_pos = conf.position or "inline",
+			virt_text = {
+				{ string.rep(conf.shift_char or " ", shift * (content.level - 1)), conf.shift_hl },
+
+				{ conf.corner_left or "", set_hl(conf.corner_left_hl) or set_hl(conf.hl) },
+				{ conf.padding_left or "", set_hl(conf.padding_left_hl) or set_hl(conf.hl) },
+				{ conf.icon or "", set_hl(conf.icon_hl) or set_hl(conf.hl) },
+				{ conf.text or content.title or "", set_hl(conf.text_hl) or set_hl(conf.hl) },
+				{ conf.padding_right or "", set_hl(conf.padding_right_hl) or set_hl(conf.hl) },
+				{ conf.corner_right or "", set_hl(conf.corner_right_hl) or set_hl(conf.hl) },
+			},
+
+			sign_text = conf.sign, sign_hl_group = set_hl(conf.sign_hl) or set_hl(conf.hl),
+
+			hl_mode = "combine",
+
+			conceal = "",
+			end_row = content.row_start + 1
+  })
+end
 
 
 
@@ -1172,6 +1207,8 @@ renderer.render = function (buffer, parsed_content, config_table)
 			renderer.render_checkboxes(buffer, content, config_table.checkboxes)
 		elseif type == "table" then
 			renderer.render_tables(buffer, content, config_table)
+    elseif type == "typst_header" then
+      renderer.render_typst_headers(buffer, content, config_table.headings)
 		end
 
 		::extmark_skipped::
