@@ -42,8 +42,13 @@ parser.md = function(buffer, TStree)
 		local row_start, col_start, row_end, col_end = capture_node:range()
 
 		if capture_name == "header" then
-			local heading_txt = capture_node:next_sibling()
-			local title = heading_txt ~= nil and vim.treesitter.get_node_text(heading_txt, buffer) or ""
+			local heading_txt = capture_node:next_sibling();
+			local title = heading_txt ~= nil and vim.treesitter.get_node_text(heading_txt, buffer) or "";
+			local h_txt_r_start, h_txt_c_start, h_txt_r_end, h_txt_c_end;
+
+			if heading_txt ~= nil then
+				h_txt_r_start, h_txt_c_start, h_txt_r_end, h_txt_c_end = heading_txt:range();
+			end
 
 			table.insert(parser.parsed_content, {
 				type = "header",
@@ -52,6 +57,7 @@ parser.md = function(buffer, TStree)
 
 				marker = capture_text,
 				title = title,
+				title_pos = { h_txt_r_start, h_txt_c_start, h_txt_r_end, h_txt_c_end },
 
 				row_start = row_start,
 				row_end = row_end,
@@ -230,7 +236,7 @@ parser.md = function(buffer, TStree)
 		elseif capture_name == "checkbox_off" then
 			table.insert(parser.parsed_content, {
 				type = "checkbox",
-				checked = false,
+				state = "incomplete",
 
 				row_start = row_start,
 				row_end = row_end,
@@ -241,7 +247,7 @@ parser.md = function(buffer, TStree)
 		elseif capture_name == "checkbox_on" then
 			table.insert(parser.parsed_content, {
 				type = "checkbox",
-				checked = true,
+				state = "complete",
 
 				row_start = row_start,
 				row_end = row_end,
@@ -281,12 +287,25 @@ parser.md_inline = function(buffer, TStree)
 			local line = vim.api.nvim_buf_get_lines(buffer, row_start, row_start + 1, false)
 			local title = string.match(line ~= nil and line[1] or "", "%b[]%s*(.*)$")
 
-			for _, extmark in ipairs(parser.parsed_content) do
-				if extmark.type == "block_quote" and extmark.row_start == row_start then
-					extmark.callout = string.match(capture_text, "%[!([^%]]+)%]")
-					extmark.title = title
+			if capture_text == "[-]" then
+				table.insert(parser.parsed_content, {
+					type = "checkbox",
+					state = "pending",
 
-					extmark.line_width = vim.fn.strchars(line[1])
+					row_start = row_start,
+					row_end = row_end,
+
+					col_start = col_start,
+					col_end = col_end
+				})
+			else
+				for _, extmark in ipairs(parser.parsed_content) do
+					if extmark.type == "block_quote" and extmark.row_start == row_start then
+						extmark.callout = string.match(capture_text, "%[!([^%]]+)%]");
+						extmark.title = title;
+
+						extmark.line_width = vim.fn.strchars(line[1])
+					end
 				end
 			end
 		elseif capture_name == "link" then
