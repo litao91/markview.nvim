@@ -42,12 +42,12 @@ parser.md = function(buffer, TStree)
 		local row_start, col_start, row_end, col_end = capture_node:range()
 
 		if capture_name == "header" then
-			local heading_txt = capture_node:next_sibling();
-			local title = heading_txt ~= nil and vim.treesitter.get_node_text(heading_txt, buffer) or "";
-			local h_txt_r_start, h_txt_c_start, h_txt_r_end, h_txt_c_end;
+			local heading_txt = capture_node:next_sibling()
+			local title = heading_txt ~= nil and vim.treesitter.get_node_text(heading_txt, buffer) or ""
+			local h_txt_r_start, h_txt_c_start, h_txt_r_end, h_txt_c_end
 
 			if heading_txt ~= nil then
-				h_txt_r_start, h_txt_c_start, h_txt_r_end, h_txt_c_end = heading_txt:range();
+				h_txt_r_start, h_txt_c_start, h_txt_r_end, h_txt_c_end = heading_txt:range()
 			end
 
 			table.insert(parser.parsed_content, {
@@ -296,13 +296,13 @@ parser.md_inline = function(buffer, TStree)
 					row_end = row_end,
 
 					col_start = col_start,
-					col_end = col_end
+					col_end = col_end,
 				})
 			else
 				for _, extmark in ipairs(parser.parsed_content) do
 					if extmark.type == "block_quote" and extmark.row_start == row_start then
-						extmark.callout = string.match(capture_text, "%[!([^%]]+)%]");
-						extmark.title = title;
+						extmark.callout = string.match(capture_text, "%[!([^%]]+)%]")
+						extmark.title = title
 
 						extmark.line_width = vim.fn.strchars(line[1])
 					end
@@ -379,6 +379,12 @@ parser.typst = function(buffer, TStree)
 				level = level + 1
 			end
 		end
+		local heading_txt = capture_node:next_sibling()
+		local h_txt_r_start, h_txt_c_start, h_txt_r_end, h_txt_c_end
+
+		if heading_txt ~= nil then
+			h_txt_r_start, h_txt_c_start, h_txt_r_end, h_txt_c_end = heading_txt:range()
+		end
 		local title = string.sub(capture_text, level + 2)
 		if capture_name == "header" then
 			table.insert(parser.parsed_content, {
@@ -388,6 +394,7 @@ parser.typst = function(buffer, TStree)
 				capture_text = capture_text,
 
 				title = title,
+				title_pos = { h_txt_r_start, h_txt_c_start, h_txt_r_end, h_txt_c_end },
 
 				row_start = row_start,
 				row_end = row_end,
@@ -411,10 +418,10 @@ parser.typst = function(buffer, TStree)
 				table.insert(lines, this_code)
 				table.insert(line_lens, len)
 			end
-      local language = vim.treesitter.get_node_text(capture_node:named_child(0), buffer)
-      if #language > 10 then
-        language = "text"
-      end
+			local language = vim.treesitter.get_node_text(capture_node:named_child(0), buffer)
+			if #language > 10 then
+				language = "text"
+			end
 			table.insert(parser.parsed_content, {
 				type = "code_block",
 				language = language,
