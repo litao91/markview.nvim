@@ -47,7 +47,9 @@ local set_hl = function (hl)
 		return;
 	end
 
-	if vim.fn.hlexists("Markview_" .. hl) == 1 then
+	if vim.fn.hlexists("Markview" .. hl) == 1 then
+		return "Markview" .. hl;
+	elseif vim.fn.hlexists("Markview_" .. hl) == 1 then
 		return "Markview_" .. hl;
 	else
 		return hl;
@@ -66,7 +68,7 @@ local display_width = function (text, config)
 				inl_conf.corner_left or "",
 				inl_conf.padding_left or "",
 
-				inl_conf.text or inline_code or "",
+				inline_code or "",
 
 				inl_conf.padding_right or "",
 				inl_conf.corner_right or ""
@@ -737,7 +739,7 @@ renderer.render_code_blocks = function (buffer, content, config_table)
 		vim.api.nvim_buf_set_extmark(buffer, renderer.namespace, content.row_start, content.col_start, {
 			virt_text_pos = config_table.position or "inline",
 			virt_text = {
-				{ string.rep(" ", block_length + ((config_table.pad_amount or 1) * 2)), set_hl(config_table.hl) },
+				{ string.rep(config_table.pad_char or " ", block_length + ((config_table.pad_amount or 1) * 2)), set_hl(config_table.hl) },
 			},
 
 			hl_mode = "combine",
@@ -746,7 +748,7 @@ renderer.render_code_blocks = function (buffer, content, config_table)
 		vim.api.nvim_buf_set_extmark(buffer, renderer.namespace, content.row_end - 1, content.col_start, {
 			virt_text_pos = config_table.position or "inline",
 			virt_text = {
-				{ string.rep(" ", block_length + ((config_table.pad_amount or 1) * 2)), set_hl(config_table.hl) },
+				{ string.rep(config_table.pad_char or " ", block_length + ((config_table.pad_amount or 1) * 2)), set_hl(config_table.hl) },
 			},
 
 			hl_mode = "combine",
@@ -809,7 +811,7 @@ renderer.render_code_blocks = function (buffer, content, config_table)
 				virt_text = {
 					{ icon .. " ", set_hl(hl) },
 					{ language .. " ", set_hl(config_table.name_hl) or set_hl(hl) },
-					{ string.rep(" ", block_length - lang_width + ((config_table.pad_amount or 1) * 2)), set_hl(config_table.hl) },
+					{ string.rep(config_table.pad_char or " ", block_length - lang_width + ((config_table.pad_amount or 1) * 2)), set_hl(config_table.hl) },
 				},
 
 				sign_text = config_table.sign == true and icon or nil,
@@ -821,7 +823,7 @@ renderer.render_code_blocks = function (buffer, content, config_table)
 			vim.api.nvim_buf_set_extmark(buffer, renderer.namespace, content.row_start, content.col_start, {
 				virt_text_pos = config_table.position or "inline",
 				virt_text = {
-					{ string.rep(" ", block_length - lang_width + ((config_table.pad_amount or 1) * 2)), set_hl(config_table.hl) },
+					{ string.rep(config_table.pad_char or " ", block_length - lang_width + ((config_table.pad_amount or 1) * 2)), set_hl(config_table.hl) },
 					{ icon .. " ", set_hl(hl) },
 					{ language .. " ", set_hl(config_table.name_hl) or set_hl(hl) },
 				},
@@ -836,7 +838,7 @@ renderer.render_code_blocks = function (buffer, content, config_table)
 		vim.api.nvim_buf_set_extmark(buffer, renderer.namespace, content.row_end - 1, content.col_start, {
 			virt_text_pos = config_table.position or "inline",
 			virt_text = {
-				{ string.rep(" ", block_length + ((config_table.pad_amount or 1) * 2)), set_hl(config_table.hl) },
+				{ string.rep(config_table.pad_char or " ", block_length + ((config_table.pad_amount or 1) * 2)), set_hl(config_table.hl) },
 			},
 
 			hl_mode = "combine",
@@ -983,8 +985,8 @@ renderer.render_horizontal_rules = function (buffer, content, config_table)
 		if part.type == "repeating" then
 			local repeat_time = 0;
 
-			if type(part.repeat_amount) == "function" and pcall(part.repeat_amount --[[@as function]]) then
-				repeat_time = part.repeat_amount();
+			if type(part.repeat_amount) == "function" and pcall(part.repeat_amount --[[@as function]], buffer) then
+				repeat_time = part.repeat_amount(buffer);
 			elseif type(part.repeat_amount) == "number" then
 				repeat_time = part.repeat_amount --[[@as number]];
 			end
@@ -1014,7 +1016,7 @@ renderer.render_horizontal_rules = function (buffer, content, config_table)
 	end
 
 	vim.api.nvim_buf_set_extmark(buffer, renderer.namespace, content.row_start, content.col_start, {
-		virt_text_pos = config_table.position or "inline",
+		virt_text_pos = "overlay",
 		virt_text = virt_text,
 
 		end_col = vim.fn.strchars(content.text),
@@ -1120,7 +1122,7 @@ renderer.render_lists = function (buffer, content, config_table)
 	local use_text = ls_conf.text or content.marker_symbol;
 
 	if ls_conf.add_padding == true then
-		local shift = config_table.shift_amount or vim.bo[buffer].shiftwidth;
+		local shift = config_table.shift_width or vim.bo[buffer].shiftwidth;
 		local lvl = math.floor(content.col_start / vim.fn.strchars(content.marker_symbol)) + 1;
 
 		for l, line in ipairs(content.list_lines) do
@@ -1169,43 +1171,31 @@ renderer.render_checkboxes = function (buffer, content, config_table)
 		return;
 	end
 
+	local chk_config = {};
+
 	if content.state == "complete" then
-		vim.api.nvim_buf_set_extmark(buffer, renderer.namespace, content.row_start, content.col_start, {
-			virt_text_pos = "inline",
-			virt_text = {
-				{ config_table.checked.text, set_hl(config_table.checked.hl) }
-			},
-
-			end_col = content.col_end,
-			conceal = "",
-
-			hl_mode = "combine"
-		});
+		chk_config = config_table.checked;
 	elseif content.state == "incomplete" then
-		vim.api.nvim_buf_set_extmark(buffer, renderer.namespace, content.row_start, content.col_start, {
-			virt_text_pos = "inline",
-			virt_text = {
-				{ config_table.unchecked.text, set_hl(config_table.unchecked.hl) }
-			},
-
-			end_col = content.col_end,
-			conceal = "",
-
-			hl_mode = "combine"
-		});
+		chk_config = config_table.unchecked;
 	elseif content.state == "pending" then
-		vim.api.nvim_buf_set_extmark(buffer, renderer.namespace, content.row_start, content.col_start, {
-			virt_text_pos = "inline",
-			virt_text = {
-				{ config_table.pending.text, set_hl(config_table.pending.hl) }
-			},
-
-			end_col = content.col_end,
-			conceal = "",
-
-			hl_mode = "combine"
-		});
+		chk_config = config_table.pending;
 	end
+
+	if type(chk_config.text) ~= "text" then
+		return;
+	end
+
+	vim.api.nvim_buf_set_extmark(buffer, renderer.namespace, content.row_start, content.col_start, {
+		virt_text_pos = "inline",
+		virt_text = {
+			{ chk_config.text, set_hl(chk_config.hl) }
+		},
+
+		end_col = content.col_end,
+		conceal = "",
+
+		hl_mode = "combine"
+	});
 end
 
 --- Renderer for custom table

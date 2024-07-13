@@ -9,6 +9,12 @@
 >[!WARNING]
 > This plugin is in it's alpha stage and may go through breaking changes.
 
+>[!CAUTION]
+> If you are using `presets` then you should stop using them. Presets are going to get reworked in the coming updates so to prevent things from accidentally breaking please refrain for using them.
+
+>[!IMPORTANT]
+> Highlights now use `PascalCase` so it is recommended to change your highlight group names to PascalCase. But don't worry, the previous names using `Markview_` are still supported!
+
 ## 📑 Table of contents
 
 - [Features](#-features)
@@ -49,6 +55,7 @@ For `plugins.lua` or `lazy.lua` users.
 ```lua
 {
     "OXY2DEV/markview.nvim",
+    ft = { "md" },
 
     dependencies = {
         -- You may not need this if you don't lazy load
@@ -65,6 +72,7 @@ For `plugins/markview.lua` users
 ```lua
 return {
     "OXY2DEV/markview.nvim",
+    ft = { "md" },
 
     dependencies = {
         -- You may not need this if you don't lazy load
@@ -117,22 +125,21 @@ Configuration table for the `setup()` function is given below.
 ```lua
 require("markview").setup({
     buf_ignore = { "nofile" },
-    modes = { "n" },
+    modes = { "n", "no" },
 
-    -- Returns the conceallevel to the global value when changing modes
-    restore_conceallevel = true,
-    -- Returns the concealcursor to the global value when changing modes
-    restore_concealcursor = false,
+    options = {
+        on_enable = {},
+        on_disable = {}
+    },
 
-    headings = {},
-    code_blocks = {},
     block_quotes = {},
-    horizontal_rules = {},
-    hyperlinks = {},
-    images = {},
-    inline_codes = {},
-    list_items = {},
     checkboxes = {},
+    code_blocks = {},
+    headings = {},
+    horizontal_rules = {},
+    inline_codes = {},
+    links = {},
+    list_items = {},
     tables = {}
 });
 ```
@@ -151,14 +158,20 @@ When called without any arguments, it toggles the plugin.
 Possible subcommands are,
 
 - `toggleAll`, toggles the plugin
-- `enableAll`, enables the preview in all the attached buffers
-- `disableAll`, disables the preview in all the attached buffers
-
+- `enableAll`, enables the plugin
+- `disableAll`, disables the plugin
+- `toggle`, toggles the plugin for the specified buffer(default is the current buffer)
+- `enable`, enables the plugin for the specified buffer(default is the current buffer)
+- `disable`, disables the plugin for the specified buffer(default is the current buffer)
 
 ## 👾 Showcases
 
 >[!IMPORTANT]
 > Screenshots on a phone are very blurry(Yes, the plugin was made on my phone).
 >
-> If you have screenshots of the plugin, you can submit them in the special issue(not yet open). And yes, credit will be provided.
+> If you have screenshots of the plugin, you can submit them in the special issue. And yes, credit will be provided.
+
+![showcase_1](./images/preview_1.png)
+
+<sub>Taken by <a href="https://github.com/scottmckendry">@scottmckendry</a></sub>
 
