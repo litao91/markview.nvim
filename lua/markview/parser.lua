@@ -1,16 +1,81 @@
 local parser = {}
 -- local renderer = require("markview/renderer");
 
-parser.parsed_content = {}
+parser.fiter_lines = function (buffer, from, to, marker)
+	local captured_lines = vim.api.nvim_buf_get_lines(buffer, from, to, false);
+	local filtered_lines = {};
+	local indexes = {};
+	local spaces = {};
+
+	local tolarence = 3;
+	local found = 0;
+
+	for l, line in ipairs(captured_lines) do
+		if l ~= 1 and line:match(marker) then
+			break;
+		end
+
+		if found >= tolarence then
+			break;
+		end
+
+		local spaces_before = vim.fn.strchars(line:match("(%s*)"));
+
+		if not line:match(marker) then
+			spaces_before = math.max(0, spaces_before - vim.fn.strchars(marker .. " "));
+		end
+
+		table.insert(filtered_lines, line);
+		table.insert(indexes, l);
+		table.insert(spaces, spaces_before)
+
+		if line == "" then
+			found = found + 1;
+		end
+	end
+
+	return filtered_lines, indexes, spaces;
+end
+
+parser.get_list_end_range = function (buffer, from, to, marker)
+	local captured_lines = vim.api.nvim_buf_get_lines(buffer, from, to, false);
+
+	local width = 0;
+	local height = from - 1;
+
+	local tolarence = 3;
+	local found = 0;
+
+
+	for l, line in ipairs(captured_lines) do
+		if l ~= 1 and line:match(marker) then
+			break;
+		end
+
+		if found >= tolarence then
+			break;
+		end
+
+		width = vim.fn.strchars(line);
+
+		if line == "" then
+			found = found + 1;
+		end
+
+		height = height + 1;
+	end
+
+	return width, height == from - 1 and from or height;
+end
+
+parser.parsed_content = {};
 
 --- Function to parse the markdown document
 ---
 ---@param buffer number
 ---@param TStree any
-parser.md = function(buffer, TStree)
-	local scanned_queries = vim.treesitter.query.parse(
-		"markdown",
-		[[
+parser.md = function (buffer, TStree, from, to)
+	local scanned_queies = vim.treesitter.query.parse("markdown", [[
 		((setext_heading) @setext_heading)
 
 		(atx_heading [
@@ -38,10 +103,10 @@ parser.md = function(buffer, TStree)
 	)
 
 	-- The last 2 _ represent the metadata & query
-	for capture_id, capture_node, _, _ in scanned_queries:iter_captures(TStree:root()) do
-		local capture_name = scanned_queries.captures[capture_id]
-		local capture_text = vim.treesitter.get_node_text(capture_node, buffer)
-		local row_start, col_start, row_end, col_end = capture_node:range()
+	for capture_id, capture_node, _, _ in scanned_queies:iter_captures(TStree:root(), buffer, from, to) do
+		local capture_name = scanned_queies.captures[capture_id];
+		local capture_text = vim.treesitter.get_node_text(capture_node, buffer);
+		local row_start, col_start, row_end, col_end = capture_node:range();
 
 		if capture_name == "header" then
 			local heading_txt = capture_node:next_sibling()
@@ -54,6 +119,7 @@ parser.md = function(buffer, TStree)
 			local underline = vim.treesitter.get_node_text(capture_node:named_child(1), buffer)
 
 			table.insert(parser.parsed_content, {
+				node = capture_node,
 				type = "heading_s",
 
 				marker = underline,
@@ -77,6 +143,7 @@ parser.md = function(buffer, TStree)
 			end
 
 			table.insert(parser.parsed_content, {
+				node = capture_node,
 				type = "heading",
 
 				level = vim.fn.strchars(capture_text),
@@ -109,8 +176,9 @@ parser.md = function(buffer, TStree)
 			end
 
 			table.insert(parser.parsed_content, {
+				node = capture_node,
 				type = "code_block",
-				language = vim.treesitter.get_node_text(capture_node:named_child(1), buffer),
+				language = not capture_node:named_child(1) and "" or vim.treesitter.get_node_text(capture_node:named_child(1), buffer),
 
 				line_lengths = line_lens,
 				largest_line = highest_len,
@@ -126,29 +194,40 @@ parser.md = function(buffer, TStree)
 			local quote_markers = {}
 			local quote_lines = {}
 
+			local largest_len = 0;
+
 			-- NOTE: row index is 0-based
 			for number = 0, (row_end - row_start) - 1 do
 				local txt = vim.api.nvim_buf_get_lines(buffer, row_start + number, row_start + number + 1, false)[1]
 
 				if txt ~= nil then
-					txt = txt:match("^(>%s*)(.*)$")
-					table.insert(quote_lines, txt)
+					if vim.fn.strchars(txt) > largest_len then
+						largest_len = vim.fn.strchars(txt);
+					end
+
+					txt = txt:match("^(>%s*)(.*)$");
+					table.insert(quote_lines, txt);
 				end
 			end
 
 			table.insert(parser.parsed_content, {
+				node = capture_node,
 				type = "block_quote",
 				markers = quote_markers,
 				lines = quote_lines,
 
 				row_start = row_start,
 				row_end = row_end,
+				-- Use hacks on renderer.lua instead
+				-- The node ends on the next line after the block quote
+				-- We will not count it
 
 				col_start = col_start,
-				col_end = col_end,
+				col_end = largest_len
 			})
 		elseif capture_name == "horizontal_rule" then
 			table.insert(parser.parsed_content, {
+				node = capture_node,
 				type = "horizontal_rule",
 				text = capture_text,
 
@@ -208,6 +287,7 @@ parser.md = function(buffer, TStree)
 			end
 
 			table.insert(parser.parsed_content, {
+				node = capture_node,
 				type = "table",
 
 				row_type = table_structure,
@@ -222,45 +302,35 @@ parser.md = function(buffer, TStree)
 				col_end = col_end,
 			})
 		elseif capture_name == "list_item" then
-			local marker = capture_node:named_child(0)
-			local m_row_start, m_col_start, m_row_end, m_col_end = marker:range()
+			local marker = capture_node:named_child(0);
+			local marker_text = vim.treesitter.get_node_text(marker, buffer);
+			local symbol = marker_text:gsub("%s", "");
 
-			local rows = {}
+			local list_lines, lines, spaces = parser.fiter_lines(buffer, row_start, row_end, symbol);
+			local spaces_before_marker = list_lines[1]:match("^(%s*)" .. symbol .. "%s*");
 
-			for c = 0, capture_node:child_count() - 1 do
-				local child_node = capture_node:named_child(c)
-
-				if child_node:type() ~= "list" then
-					local r_start, c_start, r_end, c_end = child_node:range()
-
-					if not vim.list_contains(rows, r_start) then
-						for r = 0, (r_end - r_start) - 1 do
-							table.insert(rows, r_start + r)
-						end
-					end
-				end
-			end
+			local c_end, r_end = parser.get_list_end_range(buffer, row_start, row_end, symbol)
 
 			table.insert(parser.parsed_content, {
+				node = capture_node,
 				type = "list_item",
 				marker_symbol = vim.treesitter.get_node_text(marker, buffer),
-				list_candidates = rows,
-				list_lines = vim.api.nvim_buf_get_lines(buffer, row_start, row_end, false),
 
-				m_row_start = m_row_start,
-				m_col_start = m_col_start,
+				list_candidates = lines,
+				list_lines = list_lines,
 
-				m_row_end = m_row_end,
-				m_col_end = m_col_end,
+				spaces = spaces,
+				conceal_spaces = vim.fn.strchars(spaces_before_marker),
 
 				row_start = row_start,
 				row_end = row_end,
 
 				col_start = col_start,
-				col_end = col_end,
+				col_end = c_end
 			})
 		elseif capture_name == "checkbox_off" then
 			table.insert(parser.parsed_content, {
+				node = capture_node,
 				type = "checkbox",
 				state = "incomplete",
 
@@ -272,6 +342,7 @@ parser.md = function(buffer, TStree)
 			})
 		elseif capture_name == "checkbox_on" then
 			table.insert(parser.parsed_content, {
+				node = capture_node,
 				type = "checkbox",
 				state = "complete",
 
@@ -289,10 +360,8 @@ end
 ---
 ---@param buffer number
 ---@param TStree any
-parser.md_inline = function(buffer, TStree)
-	local scanned_queries = vim.treesitter.query.parse(
-		"markdown_inline",
-		[[
+parser.md_inline = function (buffer, TStree, from, to)
+	local scanned_queies = vim.treesitter.query.parse("markdown_inline", [[
 		((shortcut_link) @callout)
 
 		([
@@ -306,10 +375,10 @@ parser.md_inline = function(buffer, TStree)
 	)
 
 	-- The last 2 _ represent the metadata & query
-	for capture_id, capture_node, _, _ in scanned_queries:iter_captures(TStree:root()) do
-		local capture_name = scanned_queries.captures[capture_id]
-		local capture_text = vim.treesitter.get_node_text(capture_node, buffer)
-		local row_start, col_start, row_end, col_end = capture_node:range()
+	for capture_id, capture_node, _, _ in scanned_queies:iter_captures(TStree:root(), buffer, from, to) do
+		local capture_name = scanned_queies.captures[capture_id];
+		local capture_text = vim.treesitter.get_node_text(capture_node, buffer);
+		local row_start, col_start, row_end, col_end = capture_node:range();
 
 		if capture_name == "callout" then
 			local line = vim.api.nvim_buf_get_lines(buffer, row_start, row_start + 1, false)
@@ -317,6 +386,7 @@ parser.md_inline = function(buffer, TStree)
 
 			if capture_text == "[-]" then
 				table.insert(parser.parsed_content, {
+					node = capture_node,
 					type = "checkbox",
 					state = "pending",
 
@@ -329,8 +399,9 @@ parser.md_inline = function(buffer, TStree)
 			else
 				for _, extmark in ipairs(parser.parsed_content) do
 					if extmark.type == "block_quote" and extmark.row_start == row_start then
-						extmark.callout = string.match(capture_text, "%[!([^%]]+)%]")
-						extmark.title = title
+
+						extmark.callout = string.match(capture_text, "%[!([^%]]+)%]");
+						extmark.title = title;
 
 						extmark.line_width = vim.fn.strchars(line[1])
 					end
@@ -342,6 +413,7 @@ parser.md_inline = function(buffer, TStree)
 			local link_address = string.match(capture_text, "%((.-)%)")
 
 			table.insert(parser.parsed_content, {
+				node = capture_node,
 				type = "link",
 				link_type = link_type,
 
@@ -359,6 +431,7 @@ parser.md_inline = function(buffer, TStree)
 			local link_address = string.match(capture_text, "%((.-)%)")
 
 			table.insert(parser.parsed_content, {
+				node = capture_node,
 				type = "image",
 
 				text = link_text,
@@ -372,6 +445,7 @@ parser.md_inline = function(buffer, TStree)
 			})
 		elseif capture_name == "code" then
 			table.insert(parser.parsed_content, {
+				node = capture_node,
 				type = "inline_code",
 
 				text = string.gsub(capture_text, "`", ""),
@@ -491,7 +565,8 @@ parser.init = function(buffer)
 	root_parser:parse(true)
 
 	-- Clear the previous contents
-	parser.parsed_content = {}
+	parser.parsed_content = {};
+	local main_tree_parsed = false;
 
 	root_parser:for_each_tree(function(TStree, language_tree)
 		local tree_language = language_tree:lang()
@@ -508,4 +583,30 @@ parser.init = function(buffer)
 	return parser.parsed_content
 end
 
-return parser
+parser.parse_range = function (buffer, from, to)
+	local root_parser = vim.treesitter.get_parser(buffer);
+	root_parser:parse(true);
+
+	if (not from or not to) and _G.__markview_render_ranges and _G.__markview_render_ranges[buffer] then
+		from = _G.__markview_render_ranges[buffer][1];
+		to = _G.__markview_render_ranges[buffer][2];
+	end
+	--
+	-- Clear the previous contents
+	parser.parsed_content = {};
+	local main_tree_parsed = false;
+
+	root_parser:for_each_tree(function (TStree, language_tree)
+		local tree_language = language_tree:lang();
+
+		if tree_language == "markdown" then
+			parser.md(buffer, TStree, from, to)
+		elseif tree_language == "markdown_inline" then
+			parser.md_inline(buffer, TStree, from, to);
+		end
+	end)
+
+	return parser.parsed_content;
+end
+
+return parser;
