@@ -1,7 +1,7 @@
 local parser = {}
 -- local renderer = require("markview/renderer");
 
-parser.fiter_lines = function (buffer, from, to, marker)
+parser.filter_lines = function (buffer, from, to, marker)
 	local captured_lines = vim.api.nvim_buf_get_lines(buffer, from, to, false);
 	local filtered_lines = {};
 	local indexes = {};
@@ -306,7 +306,7 @@ parser.md = function (buffer, TStree, from, to)
 			local marker_text = vim.treesitter.get_node_text(marker, buffer);
 			local symbol = marker_text:gsub("%s", "");
 
-			local list_lines, lines, spaces = parser.fiter_lines(buffer, row_start, row_end, symbol);
+			local list_lines, lines, spaces = parser.filter_lines(buffer, row_start, row_end, symbol);
 			local spaces_before_marker = list_lines[1]:match("^(%s*)" .. symbol .. "%s*");
 
 			local c_end, r_end = parser.get_list_end_range(buffer, row_start, row_end, symbol)
