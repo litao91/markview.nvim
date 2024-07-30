@@ -538,7 +538,7 @@ parser.typst = function(buffer, TStree)
 				row_end = row_end + 1,
 
 				col_start = col_start,
-				col_end = col_end,
+				col_end = col_end - 3,
 			})
 		elseif capture_name == "inline_code" then
 			table.insert(parser.parsed_content, {
