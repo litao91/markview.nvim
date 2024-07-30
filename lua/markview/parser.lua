@@ -524,7 +524,7 @@ parser.typst = function(buffer, TStree)
 			end
 			local language = vim.treesitter.get_node_text(capture_node:named_child(0), buffer)
 			if #language > 10 then
-				language = "text"
+				language = ""
 			end
 			table.insert(parser.parsed_content, {
 				type = "code_block",
